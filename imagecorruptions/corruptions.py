@@ -15,7 +15,6 @@ from scipy.ndimage.interpolation import map_coordinates
 import warnings
 import os
 from pkg_resources import resource_filename
-from numba import njit, prange
 
 
 
@@ -108,7 +107,7 @@ def getOptimalKernelWidth1D(radius, sigma):
     return radius * 2 + 1
 
 def gauss_function(x, mean, sigma):
-    return (np.exp(- (x - mean)**2 / (2 * (sigma**2)))) / (np.sqrt(2 * np.pi) * sigma)
+    return (np.exp(- x**2 / (2 * (sigma**2)))) / (np.sqrt(2 * np.pi) * sigma)
 
 def getMotionBlurKernel(width, sigma):
     k = gauss_function(np.arange(width), 0, sigma)
@@ -150,20 +149,6 @@ def _motion_blur(x, radius, sigma, angle):
         blurred = blurred + kernel[i] * shifted
     return blurred
 
-# Numba nopython compilation to shuffle_pixles
-@njit()
-def _shuffle_pixels_njit_glass_blur(d0,d1,x,c):
-
-    # locally shuffle pixels
-    for i in range(c[2]):
-        for h in range(d0 - c[1], c[1], -1):
-            for w in range(d1 - c[1], c[1], -1):
-                dx, dy = np.random.randint(-c[1], c[1], size=(2,))
-                h_prime, w_prime = h + dy, w + dx
-                # swap
-                x[h, w], x[h_prime, w_prime] = x[h_prime, w_prime], x[h, w]
-    return x
-
 # /////////////// End Corruption Helpers ///////////////
 
 
@@ -177,7 +162,8 @@ def gaussian_noise(x, severity=1):
 
 
 def shot_noise(x, severity=1):
-    c = [60, 25, 12, 5, 3][severity - 1]
+    # c = [60, 25, 12, 5, 3][severity - 1]
+    c = [85, 70, 62, 55, 47, 41, 34, 29, 25, 21][severity - 1]
 
     x = np.array(x) / 255.
     return np.clip(np.random.poisson(x * c) / float(c), 0, 1) * 255
@@ -211,14 +197,23 @@ def glass_blur(x, severity=1):
 
     x = np.uint8(
         gaussian(np.array(x) / 255., sigma=c[0], multichannel=True) * 255)
+    x_shape = np.array(x).shape
 
-    x = _shuffle_pixels_njit_glass_blur(np.array(x).shape[0],np.array(x).shape[1],x,c)
+    # locally shuffle pixels
+    for i in range(c[2]):
+        for h in range(x_shape[0] - c[1], c[1], -1):
+            for w in range(x_shape[1] - c[1], c[1], -1):
+                dx, dy = np.random.randint(-c[1], c[1], size=(2,))
+                h_prime, w_prime = h + dy, w + dx
+                # swap
+                x[h, w], x[h_prime, w_prime] = x[h_prime, w_prime], x[h, w]
 
     return np.clip(gaussian(x / 255., sigma=c[0], multichannel=True), 0,
                    1) * 255
 
+
 def defocus_blur(x, severity=1):
-    c = [(3, 0.1), (4, 0.5), (6, 0.5), (8, 0.5), (10, 0.5)][severity - 1]
+    c = [(1, 0.1), (1.5, 0.1), (2, 0.5), (2.5, 0.5), (3, 0.5), (3.5, 0.5), (4, 0.5), (4.5, 0.5), (5, 0.5), (5.3, 0.5)][severity - 1]
 
     x = np.array(x) / 255.
     kernel = disk(radius=c[0], alias_blur=c[1])
@@ -310,11 +305,16 @@ def fog(x, severity=1):
 
 
 def frost(x, severity=1):
-    c = [(1, 0.4),
-         (0.8, 0.6),
-         (0.7, 0.7),
-         (0.65, 0.7),
-         (0.6, 0.75)][severity - 1]
+    c = [(1, 0.2),
+         (0.95, 0.25),
+         (0.9, 0.3),
+         (0.85, 0.35),
+         (0.8, 0.35),
+         (0.75, 0.4),
+         (0.7, 0.4),
+         (0.65, 0.45),
+         (0.6, 0.45),
+         (0.55, 0.48)][severity - 1]
 
     idx = np.random.randint(5)
     filename = [resource_filename(__name__, './frost/frost1.png'),
@@ -478,7 +478,8 @@ def spatter(x, severity=1):
 
 
 def contrast(x, severity=1):
-    c = [0.4, .3, .2, .1, .05][severity - 1]
+    # c = [0.4, .3, .2, .1, .05][severity - 1]
+    c = [.5, .45, .4, .35, .3, .25, .2, .15, .1, .05][severity - 1]
 
     x = np.array(x) / 255.
     means = np.mean(x, axis=(0, 1), keepdims=True)
@@ -486,7 +487,7 @@ def contrast(x, severity=1):
 
 
 def brightness(x, severity=1):
-    c = [.1, .2, .3, .4, .5][severity - 1]
+    c = [.1, .15, .2, .25, .3, .35, .4, .45, .5, .55][severity - 1]
 
     x = np.array(x) / 255.
 
